@@ -49,9 +49,9 @@ except FileNotFoundError:
 
 # Load sound effects
 try:
-    flip_sound = pygame.mixer.Sound("sounds/flip.wav")
-    match_sound = pygame.mixer.Sound("sounds/match.wav")
-    win_sound = pygame.mixer.Sound("sounds/win.wav")
+    flip_sound = pygame.mixer.Sound("sounds/flipin.mp3")
+    match_sound = pygame.mixer.Sound("sounds/flipout.mp3")
+    win_sound = pygame.mixer.Sound("sounds/win.mp3")
 except FileNotFoundError:
     print("Sound files not found; running without audio.")
     flip_sound = match_sound = win_sound = None
