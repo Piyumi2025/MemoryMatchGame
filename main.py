@@ -1,228 +1,527 @@
-import pygame
-from pygame.locals import *
-import random
-import time
-from PIL import Image
-from gtts import gTTS
 import os
-import json
 import sys
-import tempfile
-import os
+import json
+import time
+import random
+import math
+import pygame
+from typing import List, Tuple
 
+# ---------------------------
+# Basic setup & constants
+# ---------------------------
 pygame.init()
 pygame.mixer.init()
-WIDTH, HEIGHT = 800, 600
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Mythic Match Quest")
-clock = pygame.time.Clock()
+
+WIDTH, HEIGHT = 900, 640
 FPS = 60
+BG_COLOR = (12, 14, 20)
+ACCENT = (0, 191, 255)
+TEXT = (230, 238, 255)
 
-# Load and generate sounds
-flip_sound = pygame.mixer.Sound('sounds/flip.mp3')
-match_sound = pygame.mixer.Sound('sounds/match.mp3')
-mismatch_sound = pygame.mixer.Sound('sounds/mismatch.mp3')
-win_sound = pygame.mixer.Sound('sounds/win.mp3')
-for file, text in [('match.mp3', 'Match!'), ('tryagain.mp3', 'Try again!'), ('levelup.mp3', 'Level Up!')]:
-    if not os.path.exists(f'sounds/{file}'):
-        tts = gTTS(text=text, lang='en')
-        tts.save(f'sounds/{file}')
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Mythic Match Quest — robust edition")
+clock = pygame.time.Clock()
 
-# Load image with PIL (random filter)
+FONT_LG = pygame.font.SysFont("Segoe UI", 42)
+FONT_MD = pygame.font.SysFont("Segoe UI", 26)
+FONT_SM = pygame.font.SysFont("Segoe UI", 18)
+
+# ---------------------------
+# Utilities
+# ---------------------------
+ASSETS_DIR = os.path.abspath("assets")
+SOUNDS_DIR = os.path.abspath("sounds")
+IMAGES_DIR = os.path.abspath("images")
+
+for d in [ASSETS_DIR, SOUNDS_DIR, IMAGES_DIR]:
+    if not os.path.isdir(d):
+        # Create if missing to avoid crashes; user can later add real files
+        os.makedirs(d, exist_ok=True)
 
 
-def load_image(path, size=(100, 150)):
-    with Image.open(path) as img:
-        img = img.resize(size, Image.Resampling.LANCZOS)  # High-quality resize
-        if random.choice([True, False]):
-            img = img.convert('L')  # Grayscale
-        # Create a temporary file with explicit name and no auto-delete
-        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
-            img.save(tmp.name, 'PNG')  # Explicitly save as PNG
-            tmp_file = tmp.name
-        # Load the image after saving
-        surface = pygame.image.load(tmp_file)
-        # Clean up the temporary file after loading
-        os.unlink(tmp_file)
-        return surface
+def safe_load_sound(name: str):
+    """Try to load a sound. Return None on failure (game will continue silently)."""
+    path = os.path.join(SOUNDS_DIR, name)
+    try:
+        if os.path.exists(path):
+            return pygame.mixer.Sound(path)
+    except Exception:
+        pass
+    return None
 
-# Card class with animation and particles
+
+# Optional sounds — all are optional; game runs fine without them
+SND_FLIP = safe_load_sound("flip.mp3") or safe_load_sound("flip.wav")
+SND_MATCH = safe_load_sound("match.mp3") or safe_load_sound("match.wav")
+SND_MISMATCH = safe_load_sound("mismatch.mp3") or safe_load_sound("mismatch.wav")
+SND_WIN = safe_load_sound("win.mp3") or safe_load_sound("win.wav")
+SND_LEVELUP = safe_load_sound("levelup.mp3") or safe_load_sound("levelup.wav")
+
+MUSIC_TRACKS = [
+    os.path.join(SOUNDS_DIR, f"level{i}.mp3") for i in (1, 2, 3)
+]
+
+
+# ---------------------------
+# Image helpers
+# ---------------------------
+
+def list_card_images() -> List[str]:
+    """Return sorted list of image file paths (jpg/png) inside images/ excluding back.* """
+    if not os.path.isdir(IMAGES_DIR):
+        return []
+    files = []
+    for f in os.listdir(IMAGES_DIR):
+        fl = f.lower()
+        if fl.startswith("back."):
+            continue
+        if fl.endswith((".jpg", ".jpeg", ".png")):
+            files.append(os.path.join(IMAGES_DIR, f))
+    files.sort()
+    return files
+
+
+def load_surface_keep_ratio(path: str, target: Tuple[int, int]) -> pygame.Surface:
+    """Load an image and fit it into target size while preserving aspect ratio, with letterbox."""
+    try:
+        img = pygame.image.load(path).convert_alpha()
+    except Exception:
+        # Fallback colored card
+        surf = pygame.Surface(target, pygame.SRCALPHA)
+        surf.fill((30, 34, 46))
+        pygame.draw.rect(surf, ACCENT, surf.get_rect(), 3, border_radius=12)
+        return surf
+
+    w, h = img.get_size()
+    tw, th = target
+    scale = min(tw / w, th / h)
+    nw, nh = max(1, int(w * scale)), max(1, int(h * scale))
+    img = pygame.transform.smoothscale(img, (nw, nh))
+
+    # Letterbox into target
+    surf = pygame.Surface((tw, th), pygame.SRCALPHA)
+    surf.fill((22, 26, 34))
+    rect = img.get_rect(center=(tw // 2, th // 2))
+    surf.blit(img, rect)
+    pygame.draw.rect(surf, (60, 70, 92), surf.get_rect(), 2, border_radius=12)
+    return surf
+
+
+def make_back_surface(size: Tuple[int, int]) -> pygame.Surface:
+    w, h = size
+    surf = pygame.Surface((w, h), pygame.SRCALPHA)
+    # gradient-like stripes
+    for i in range(h):
+        t = i / max(1, h - 1)
+        c = (
+            int(18 + 8 * t),
+            int(22 + 12 * t),
+            int(34 + 24 * t),
+        )
+        pygame.draw.line(surf, c, (0, i), (w, i))
+    pygame.draw.rect(surf, ACCENT, surf.get_rect(), 3, border_radius=14)
+    # emblem
+    pygame.draw.circle(surf, ACCENT, (w // 2, h // 2), min(w, h) // 6, 2)
+    pygame.draw.line(surf, ACCENT, (w // 2, h // 2 - 10), (w // 2, h // 2 + 10), 2)
+    pygame.draw.line(surf, ACCENT, (w // 2 - 10, h // 2), (w // 2 + 10, h // 2), 2)
+    return surf
+
+
+# ---------------------------
+# Card sprite
+# ---------------------------
+CARD_SIZE = (100, 140)
+
+
 class Card(pygame.sprite.Sprite):
-    def __init__(self, image_path, pos, id):
+    def __init__(self, front_path: str, pos: Tuple[int, int], pair_id: int):
         super().__init__()
-        self.front = load_image(image_path)
-        self.back = load_image('images/back.png')
-        self.image = self.back
+        self.front_surf = load_surface_keep_ratio(front_path, CARD_SIZE)
+        self.back_surf = make_back_surface(CARD_SIZE)
+        self.image = self.back_surf.copy()
         self.rect = self.image.get_rect(topleft=pos)
-        self.id = id
-        self.flipped = False
+
+        self.id = pair_id
+        self.is_front = False
         self.matched = False
-        self.angle = 0
         self.animating = False
+        self.flip_progress = 0.0  # 0..1 during animation
 
-    def flip(self):
+    def instant_show_back(self):
+        self.is_front = False
+        self.image = self.back_surf
+
+    def instant_show_front(self):
+        self.is_front = True
+        self.image = self.front_surf
+
+    def trigger_flip(self):
+        if self.animating or self.matched:
+            return
+        self.animating = True
+        self.flip_progress = 0.0
+        if SND_FLIP:
+            SND_FLIP.play()
+
+    def update(self, dt: float):
         if not self.animating:
-            flip_sound.play()
-            self.animating = True
-            for angle in range(0, 181, 18):
-                rotated = pygame.transform.rotate(self.front if angle > 90 else self.back, angle)
-                rotated_rect = rotated.get_rect(center=self.rect.center)
-                screen.blit(rotated, rotated_rect)
-                pygame.display.flip()
-                clock.tick(FPS)
-            self.image = self.front
-            self.flipped = True
+            return
+        speed = 6.0  # higher is faster
+        self.flip_progress += speed * dt
+        if self.flip_progress >= 1.0:
+            self.flip_progress = 1.0
             self.animating = False
+            # finalize side
+            self.is_front = not self.is_front
+            self.image = self.front_surf if self.is_front else self.back_surf
 
-    def draw(self, surface):
-        surface.blit(self.image, self.rect)
-        if self.matched:
-            for _ in range(10):
-                x = self.rect.centerx + random.randint(-20, 20)
-                y = self.rect.centery + random.randint(-20, 20)
-                pygame.draw.circle(surface, (0, 191, 255), (x, y), 5)  # Blue particles
+        # Scale X to create flip illusion
+        phase = self.flip_progress
+        # 0..0.5 shrink, swap, 0.5..1 expand
+        if phase < 0.5:
+            scale = max(0.05, 1.0 - (phase * 2))
+            surf = self.front_surf if self.is_front else self.back_surf
+        else:
+            scale = max(0.05, (phase - 0.5) * 2)
+            surf = self.back_surf if self.is_front else self.front_surf
+        w, h = surf.get_size()
+        new_w = max(1, int(w * scale))
+        scaled = pygame.transform.smoothscale(surf, (new_w, h))
+        # center on original rect center
+        self.image = pygame.Surface((w, h), pygame.SRCALPHA)
+        self.image.blit(scaled, scaled.get_rect(center=(w // 2, h // 2)))
 
-# Game class with home screen and levels
+
+# ---------------------------
+# Game logic
+# ---------------------------
 class Game:
     def __init__(self):
-        self.levels = [(4, 8, 60), (6, 18, 90), (8, 32, 120)]  # (grid_size, pairs, time_limit)
-        self.current_level = 0
+        # Levels as (grid_cols_rows, time_limit_sec)
+        # We'll auto-size pairs = cols*rows/2
+        self.levels = [
+            (4, 60),  # 4x4 = 8 pairs
+            (6, 100), # 6x6 = 18 pairs
+            (8, 160), # 8x8 = 32 pairs
+        ]
+        self.level_index = 0
+
         self.cards = pygame.sprite.Group()
-        self.flipped_cards = []
+        self.flipped_cache: List[Card] = []
         self.matches = 0
         self.flips = 0
-        self.start_time = 0
-        self.score = 1000
+        self.score = 0
+        self.time_start = 0.0
+        self.time_limit = 0.0
+        self.game_over = False
+        self.paused = False
+
         self.high_scores = self.load_high_scores()
-        self.show_home()
 
+    # -------------- persistence --------------
     def load_high_scores(self):
+        path = os.path.join(ASSETS_DIR, "high_scores.json")
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                # ensure keys
+                for k in ("0", "1", "2"):
+                    data.setdefault(k, 0)
+                return data
+            except Exception:
+                pass
+        data = {"0": 0, "1": 0, "2": 0}
         try:
-            with open('assets/high_scores.json', 'r') as f:
-                return json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError):
-        # Create default high scores if file is missing or invalid
-            default_scores = {"0": 0, "1": 0, "2": 0}
-            with open('assets/high_scores.json', 'w') as f:
-                json.dump(default_scores, f)
-            return default_scores
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(data, f)
+        except Exception:
+            pass
+        return data
 
-    def show_home(self):
+    def save_high_scores(self):
+        path = os.path.join(ASSETS_DIR, "high_scores.json")
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(self.high_scores, f)
+        except Exception:
+            pass
+
+    # -------------- screens --------------
+    def home(self):
+        # preload available images to inform levels
+        available_images = list_card_images()
         running = True
+        blink = 0
         while running:
-            for event in pygame.event.get():
-                if event.type == QUIT:
-                    pygame.quit()
-                    sys.exit()
-                if event.type == KEYDOWN:
-                    if event.key == K_1:
-                        self.current_level = 0
-                        running = False
-                    elif event.key == K_2:
-                        self.current_level = 1
-                        running = False
-                    elif event.key == K_3:
-                        self.current_level = 2
-                        running = False
-                    elif event.key == K_q:
-                        pygame.quit()
-                        sys.exit()
-            screen.fill((0, 0, 0))
-            font = pygame.font.SysFont('Arial', 40)
-            screen.blit(font.render("Mythic Match Quest", True, (0, 191, 255)), (150, 100))
-            screen.blit(font.render("1: Easy | 2: Medium | 3: Hard | Q: Quit", True, (0, 191, 255)), (150, 200))
-            screen.blit(font.render(f"High Scores: {self.high_scores['0']}/{self.high_scores['1']}/{self.high_scores['2']}", True, (0, 191, 255)), (150, 300))
-            screen.blit(font.render("Click to flip, H for hint", True, (0, 191, 255)), (150, 400))
+            dt = clock.tick(FPS) / 1000.0
+            for e in pygame.event.get():
+                if e.type == pygame.QUIT:
+                    pygame.quit(); sys.exit()
+                if e.type == pygame.KEYDOWN:
+                    if e.key == pygame.K_1:
+                        self.level_index = 0; running = False
+                    elif e.key == pygame.K_2:
+                        self.level_index = 1; running = False
+                    elif e.key == pygame.K_3:
+                        self.level_index = 2; running = False
+                    elif e.key == pygame.K_q:
+                        pygame.quit(); sys.exit()
+            blink = (blink + dt) % 1.0
+
+            screen.fill(BG_COLOR)
+            self.draw_starfield()
+
+            title = FONT_LG.render("Mythic Match Quest", True, ACCENT)
+            screen.blit(title, title.get_rect(center=(WIDTH//2, 100)))
+
+            info = [
+                "1: Easy (4x4)",
+                "2: Medium (6x6)",
+                "3: Hard (8x8)",
+                "H: In-level hint  |  P: Pause  |  Q: Quit",
+                f"Images found: {len(available_images)} (put JPG/PNG in /images)",
+                f"High Scores:  E:{self.high_scores['0']}  M:{self.high_scores['1']}  H:{self.high_scores['2']}",
+            ]
+            for i, line in enumerate(info):
+                surf = FONT_MD.render(line, True, TEXT)
+                screen.blit(surf, (WIDTH//2 - 260, 200 + i*40))
+
+            press = FONT_MD.render("Press 1 / 2 / 3 to start", True, (TEXT if blink < 0.5 else (90, 100, 120)))
+            screen.blit(press, press.get_rect(center=(WIDTH//2, HEIGHT - 80)))
+
             pygame.display.flip()
-
-    def create_board(self, grid_size, pairs):
-        self.cards.empty()
-        images = ['images/' + str(i) + '.jpg' for i in range(1, pairs + 1)]
-        pairs_list = images * 2
-        random.shuffle(pairs_list)
-        spacing_x = WIDTH // (grid_size + 1)
-        spacing_y = HEIGHT // (grid_size + 1)
-        for i, img in enumerate(pairs_list):
-            row, col = i // grid_size, i % grid_size
-            pos = (spacing_x * (col + 1), spacing_y * (row + 1))
-            card = Card(img, pos, int(img.split('/')[-1].split('.')[0]))
-            self.cards.add(card)
-
-    def handle_click(self, pos):
-        if len(self.flipped_cards) < 2 and time.time() - self.start_time < self.levels[self.current_level][2]:
-            for card in self.cards:
-                if card.rect.collidepoint(pos) and not card.flipped and not card.matched:
-                    card.flip()
-                    self.flipped_cards.append(card)
-                    self.flips += 1
-                    if len(self.flipped_cards) == 2:
-                        self.check_match()
-
-    def check_match(self):
-        card1, card2 = self.flipped_cards
-        if card1.id == card2.id:
-            match_sound.play()
-            card1.matched = card2.matched = True
-            self.matches += 1
-            if self.matches == len(self.cards) // 2:
-                self.game_over = True
-                win_sound.play()
-                self.high_scores[str(self.current_level)] = max(self.high_scores[str(self.current_level)], self.score)
-                self.save_high_scores()
-        else:
-            mismatch_sound.play()
-            pygame.time.wait(1000)
-            card1.flip()
-            card2.flip()
-        self.flipped_cards = []
-
-    def update_score(self):
-        elapsed = time.time() - self.start_time
-        remaining = max(0, self.levels[self.current_level][2] - elapsed)
-        self.score = max(0, 1000 - self.flips * 10 - int(elapsed) * 5 + remaining * 2)
 
     def run_level(self):
-        grid_size, pairs, time_limit = self.levels[self.current_level]
-        self.create_board(grid_size, pairs)
-        self.game_over = False
-        self.start_time = time.time()
-        pygame.mixer.music.load(f'sounds/level{self.current_level + 1}.mp3')
-        pygame.mixer.music.play(-1)
-        while not self.game_over and time.time() - self.start_time < time_limit:
-            for event in pygame.event.get():
-                if event.type == QUIT:
-                    pygame.quit()
-                    sys.exit()
-                if event.type == MOUSEBUTTONDOWN:
-                    self.handle_click(event.pos)
-                if event.type == KEYDOWN and event.key == K_h:  # Hint
-                    if not self.flipped_cards and time.time() - self.start_time < time_limit:
-                        for card in self.cards:
-                            if not card.flipped and not card.matched:
-                                card.flip()
-                                pygame.time.wait(1000)
-                                card.flip()
-                                break
-            screen.fill((0, 0, 0))  # Dark background
-            # Add starry background
-            for _ in range(50):
-                pygame.draw.circle(screen, (255, 255, 255), (random.randint(0, WIDTH), random.randint(0, HEIGHT)), 1)
-            self.cards.draw(screen)
-            self.update_score()
-            score_text = pygame.font.SysFont('Arial', 20).render(f"Score: {self.score} Time Left: {int(self.levels[self.current_level][2] - (time.time() - self.start_time))}s", True, (0, 191, 255))
-            screen.blit(score_text, (10, 10))
-            if time.time() - self.start_time >= time_limit:
-                self.game_over = True
-            pygame.display.flip()
-            clock.tick(FPS)
-        if self.game_over and self.current_level < 2:
-            pygame.mixer.Sound('sounds/levelup.mp3').play()
-            self.current_level += 1
-            self.run_level()
-        elif self.game_over:
-            pygame.quit()
-            sys.exit()
+        cols = rows = self.levels[self.level_index][0]
+        self.time_limit = float(self.levels[self.level_index][1])
+        total_pairs_needed = (cols * rows) // 2
 
+        # Build deck from available images
+        imgs = list_card_images()
+        if len(imgs) < total_pairs_needed:
+            # If not enough, cycle through images
+            repeats = math.ceil(total_pairs_needed / max(1, len(imgs))) if imgs else 0
+            imgs = (imgs * repeats)[:total_pairs_needed]
+        else:
+            imgs = random.sample(imgs, total_pairs_needed)
+
+        deck = imgs * 2
+        random.shuffle(deck)
+
+        # layout
+        self.cards.empty()
+        margin_x, margin_y = 40, 80
+        grid_w = WIDTH - margin_x*2
+        grid_h = HEIGHT - margin_y*2
+        spacing_x = grid_w // cols
+        spacing_y = grid_h // rows
+
+        k = 0
+        for r in range(rows):
+            for c in range(cols):
+                x = margin_x + c * spacing_x + (spacing_x - CARD_SIZE[0]) // 2
+                y = margin_y + r * spacing_y + (spacing_y - CARD_SIZE[1]) // 2
+                card = Card(deck[k], (x, y), pair_id=(k // 2))
+                self.cards.add(card)
+                k += 1
+
+        self.flipped_cache.clear()
+        self.matches = 0
+        self.flips = 0
+        self.score = 1000
+        self.time_start = time.time()
+        self.game_over = False
+        self.paused = False
+
+        # optional music
+        try:
+            music_path = MUSIC_TRACKS[self.level_index]
+            if os.path.exists(music_path):
+                pygame.mixer.music.load(music_path)
+                pygame.mixer.music.play(-1)
+            else:
+                pygame.mixer.music.stop()
+        except Exception:
+            pass
+
+        while not self.game_over:
+            dt = clock.tick(FPS) / 1000.0
+            for e in pygame.event.get():
+                if e.type == pygame.QUIT:
+                    pygame.quit(); sys.exit()
+                if e.type == pygame.KEYDOWN:
+                    if e.key == pygame.K_p:
+                        self.paused = not self.paused
+                    elif e.key == pygame.K_h and not self.paused:
+                        # Hint: briefly flip a random hidden card (costs score)
+                        hidden = [cd for cd in self.cards if not cd.is_front and not cd.matched and not cd.animating]
+                        if hidden:
+                            self.score = max(0, self.score - 25)
+                            random.choice(hidden).trigger_flip()
+                    elif e.key == pygame.K_q:
+                        pygame.quit(); sys.exit()
+                if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1 and not self.paused:
+                    self.handle_click(e.pos)
+
+            # update
+            if not self.paused:
+                for cd in self.cards:
+                    cd.update(dt)
+                self.check_auto_close_flip()
+
+            # time & score
+            elapsed = time.time() - self.time_start
+            remaining = max(0.0, self.time_limit - (elapsed if not self.paused else 0.0))
+            if not self.paused:
+                self.score = max(0, 1000 - self.flips * 6 - int(elapsed) * 3 + int(remaining) * 1)
+
+            # draw
+            screen.fill(BG_COLOR)
+            self.draw_starfield()
+            self.cards.draw(screen)
+
+            ui = FONT_MD.render(
+                f"Score: {self.score}   Time Left: {int(remaining)}s   Flips: {self.flips}", True, TEXT
+            )
+            screen.blit(ui, (18, 14))
+
+            lvl = FONT_SM.render(
+                f"Level {self.level_index+1} — Press P to Pause, H for hint (-25)", True, (160, 180, 200)
+            )
+            screen.blit(lvl, (18, 46))
+
+            if self.paused:
+                self.draw_center_banner("Paused — press P to resume")
+
+            pygame.display.flip()
+
+            if remaining <= 0 and not self.game_over:
+                self.end_level(win=False)
+
+        # after loop
+        self.level_index = min(2, self.level_index + 1) if self.last_win else self.level_index
+
+    def handle_click(self, pos: Tuple[int, int]):
+        # ignore if two are animating/visible waiting to resolve
+        if len(self.flipped_cache) >= 2:
+            return
+        for card in self.cards:
+            if card.rect.collidepoint(pos) and not card.matched and not card.animating:
+                if not card.is_front:
+                    card.trigger_flip()
+                    self.flips += 1
+                    # we will push to cache after it finishes opening
+                return
+
+    def check_auto_close_flip(self):
+        # If cache has 1 or 2 fully opened cards, manage match/mismatch
+        # First, collect cards that just finished opening to front
+        for cd in self.cards:
+            if cd.animating is False and cd.is_front and cd not in self.flipped_cache and not cd.matched:
+                # ensure it just became visible (heuristic: if image equals front and not in cache)
+                self.flipped_cache.append(cd)
+
+        if len(self.flipped_cache) == 2:
+            c1, c2 = self.flipped_cache
+            if c1.id == c2.id:
+                c1.matched = c2.matched = True
+                self.matches += 1
+                if SND_MATCH:
+                    SND_MATCH.play()
+                self.flipped_cache.clear()
+                if self.matches == len(self.cards) // 2:
+                    self.end_level(win=True)
+            else:
+                # mismatch — briefly show, then flip back
+                if SND_MISMATCH:
+                    SND_MISMATCH.play()
+                pygame.time.set_timer(pygame.USEREVENT + 1, 600, loops=1)
+                # handle timed flip-back in event loop style
+                for e in pygame.event.get([pygame.USEREVENT + 1]):
+                    pass  # flush any old timers
+                def flip_back_after_delay():
+                    c1.trigger_flip(); c2.trigger_flip()
+                    self.flipped_cache.clear()
+                # we'll poll the timer in update loop
+                self._pending_flipback = (time.time() + 0.6, flip_back_after_delay)
+        # run any pending flipback
+        if hasattr(self, "_pending_flipback"):
+            t, fn = self._pending_flipback
+            if time.time() >= t:
+                try:
+                    fn()
+                finally:
+                    delattr(self, "_pending_flipback")
+
+    def end_level(self, win: bool):
+        self.game_over = True
+        self.last_win = win
+        if win:
+            if SND_WIN:
+                SND_WIN.play()
+            # update highscores
+            key = str(self.level_index)
+            self.high_scores[key] = max(self.high_scores.get(key, 0), int(self.score))
+            self.save_high_scores()
+            self.draw_center_banner("Level Complete! Press Enter for next / Esc Home")
+            if SND_LEVELUP:
+                SND_LEVELUP.play()
+        else:
+            self.draw_center_banner("Time's up! Press Enter to retry / Esc Home")
+
+        pygame.display.flip()
+        # Wait for user input
+        waiting = True
+        while waiting:
+            for e in pygame.event.get():
+                if e.type == pygame.QUIT:
+                    pygame.quit(); sys.exit()
+                if e.type == pygame.KEYDOWN:
+                    if e.key == pygame.K_RETURN:
+                        waiting = False
+                    if e.key == pygame.K_ESCAPE:
+                        waiting = False
+                        # go home after breaking
+                        self.level_index = self.level_index  # unchanged
+                        self.last_win = False  # avoid auto level advance
+                        self._go_home_after = True
+            clock.tick(FPS)
+
+    # -------------- draw helpers --------------
+    def draw_starfield(self):
+        # subtle starfield (stable pattern using seeded RNG for less flicker)
+        rnd = random.Random(12345)
+        for _ in range(100):
+            x = rnd.randint(0, WIDTH)
+            y = rnd.randint(0, HEIGHT)
+            r = rnd.choice([1, 1, 2])
+            pygame.draw.circle(screen, (255, 255, 255), (x, y), r)
+
+    def draw_center_banner(self, text: str):
+        banner = pygame.Surface((WIDTH - 160, 120), pygame.SRCALPHA)
+        banner.fill((0, 0, 0, 160))
+        pygame.draw.rect(banner, ACCENT, banner.get_rect(), 2, border_radius=18)
+        t = FONT_MD.render(text, True, TEXT)
+        banner.blit(t, t.get_rect(center=(banner.get_width()//2, banner.get_height()//2)))
+        screen.blit(banner, banner.get_rect(center=(WIDTH//2, HEIGHT//2)))
+
+
+# ---------------------------
+# Main entry
+# ---------------------------
 if __name__ == "__main__":
     game = Game()
-    game.run_level()
+    while True:
+        game._go_home_after = False
+        game.home()
+        game.run_level()
+        # Decide where to go next
+        if getattr(game, "_go_home_after", False):
+            continue
+        # If completed a level and there is a next, continue automatically
+        if game.last_win and game.level_index < 3:
+            continue
+        # otherwise show home again
+        
