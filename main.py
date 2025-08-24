@@ -6,6 +6,9 @@ from PIL import Image
 from gtts import gTTS
 import os
 import json
+import sys
+import tempfile
+import os
 
 pygame.init()
 pygame.mixer.init()
@@ -26,13 +29,22 @@ for file, text in [('match.mp3', 'Match!'), ('tryagain.mp3', 'Try again!'), ('le
         tts.save(f'sounds/{file}')
 
 # Load image with PIL (random filter)
+
+
 def load_image(path, size=(100, 150)):
-    img = Image.open(path).resize(size)
-    if random.choice([True, False]):
-        img = img.convert('L')  # Grayscale
-    mode = img.mode
-    data = img.tobytes()
-    return pygame.image.fromstring(data, size, mode)
+    with Image.open(path) as img:
+        img = img.resize(size, Image.Resampling.LANCZOS)  # High-quality resize
+        if random.choice([True, False]):
+            img = img.convert('L')  # Grayscale
+        # Create a temporary file with explicit name and no auto-delete
+        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+            img.save(tmp.name, 'PNG')  # Explicitly save as PNG
+            tmp_file = tmp.name
+        # Load the image after saving
+        surface = pygame.image.load(tmp_file)
+        # Clean up the temporary file after loading
+        os.unlink(tmp_file)
+        return surface
 
 # Card class with animation and particles
 class Card(pygame.sprite.Sprite):
@@ -86,14 +98,14 @@ class Game:
 
     def load_high_scores(self):
         try:
-            with open('high_scores.json', 'r') as f:
+            with open('assets/high_scores.json', 'r') as f:
                 return json.load(f)
-        except FileNotFoundError:
-            return {"0": 0, "1": 0, "2": 0}
-
-    def save_high_scores(self):
-        with open('high_scores.json', 'w') as f:
-            json.dump(self.high_scores, f)
+        except (FileNotFoundError, json.JSONDecodeError):
+        # Create default high scores if file is missing or invalid
+            default_scores = {"0": 0, "1": 0, "2": 0}
+            with open('assets/high_scores.json', 'w') as f:
+                json.dump(default_scores, f)
+            return default_scores
 
     def show_home(self):
         running = True
@@ -125,7 +137,7 @@ class Game:
 
     def create_board(self, grid_size, pairs):
         self.cards.empty()
-        images = ['assets/' + str(i) + '.jpg' for i in range(1, pairs + 1)]
+        images = ['images/' + str(i) + '.jpg' for i in range(1, pairs + 1)]
         pairs_list = images * 2
         random.shuffle(pairs_list)
         spacing_x = WIDTH // (grid_size + 1)
