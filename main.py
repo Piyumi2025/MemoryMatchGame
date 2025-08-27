@@ -15,7 +15,7 @@ pygame.mixer.init()
 
 WIDTH, HEIGHT = 900, 640
 FPS = 60
-BG_COLOR = (12, 14, 25)
+BG_COLOR = (12, 14, 20)
 ACCENT = (0, 191, 255)
 TEXT = (230, 238, 255)
 
