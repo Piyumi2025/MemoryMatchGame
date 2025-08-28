@@ -12,7 +12,7 @@ from math import ceil, sqrt
 pygame.init()
 pygame.mixer.init()
 
-WIDTH, HEIGHT = 1100, 800
+WIDTH, HEIGHT = 900, 640
 FPS = 60
 
 BG_COLOR = (12, 14, 22)
@@ -23,9 +23,13 @@ ACCENT = (0, 200, 255)
 ACCENT_DARK = (0, 140, 200)
 RED = (230, 80, 80)
 
-BOARD_PAD = 30        # padding around the board area
-CELL_MARGIN = 10      # space between cards
-CARD_ASPECT = 5/7     # width:height ratio for scaling
+# --- window & layout constants ---
+BOARD_PAD = 24
+CELL_MARGIN = 8
+TOP_HUD = 90
+CARD_ASPECT = 5 / 7
+CARD_MIN_W, CARD_MIN_H = 40, 48
+CARD_MAX_W, CARD_MAX_H = 220, 320
 
 # Folders
 IMG_FOLDER = "images"
@@ -45,7 +49,6 @@ def load_image(path):
         return pygame.image.load(path).convert_alpha()
     except Exception as e:
         print(f"[warn] Could not load image: {path} -> {e}")
-        # Fallback: simple placeholder surface
         surf = pygame.Surface((100, 140), pygame.SRCALPHA)
         surf.fill((60, 60, 80))
         pygame.draw.line(surf, (120, 120, 160), (0,0), (100,140), 3)
@@ -63,7 +66,6 @@ def load_sound(name):
         return _NullSound()
 
 def load_font(size):
-    # Try assets/font.ttf, otherwise default
     path = os.path.join(AST_FOLDER, "font.ttf")
     try:
         return pygame.font.Font(path, size)
@@ -73,18 +75,15 @@ def load_font(size):
 # -----------------------------
 # Assets
 # -----------------------------
-# Images
 back_raw = load_image(os.path.join(IMG_FOLDER, "back.png"))
 face_raws = [load_image(os.path.join(IMG_FOLDER, f"{i}.png")) for i in range(1, 33)]
 
-# Sounds (optional)
 snd_flip = load_sound("flip.wav")
 snd_match = load_sound("match.wav")
 snd_mismatch = load_sound("mismatch.wav")
 snd_win = load_sound("win.wav")
 snd_button = load_sound("button.wav")
 
-# Music (optional)
 try:
     pygame.mixer.music.load(os.path.join(AST_FOLDER, "bg_music.mp3"))
     pygame.mixer.music.set_volume(0.25)
@@ -92,20 +91,18 @@ try:
 except Exception as e:
     print(f"[warn] No/invalid bg music -> {e}")
 
-# Fonts
 FONT_LG = load_font(56)
 FONT_MD = load_font(36)
 FONT_SM = load_font(24)
 FONT_XS = load_font(18)
 
-# Optional logo
 try:
     LOGO = load_image(os.path.join(AST_FOLDER, "logo.png"))
 except Exception:
     LOGO = None
 
 # -----------------------------
-# High scores (per-level best time in seconds)
+# High scores
 # -----------------------------
 def load_scores():
     try:
@@ -114,7 +111,6 @@ def load_scores():
         if os.path.exists(SCORES_FILE):
             with open(SCORES_FILE, "r") as f:
                 data = json.load(f)
-                # ensure keys are strings "1".."32"
                 return {str(k): int(v) for k, v in data.items()}
     except Exception as e:
         print(f"[warn] load_scores: {e}")
@@ -152,12 +148,12 @@ def make_button(x, y, w, h):
     return pygame.Rect(int(x), int(y), int(w), int(h))
 
 # -----------------------------
-# Card + Grid
+# Card class
 # -----------------------------
 class Card:
     def __init__(self, rect, face_idx, face_img_scaled, back_img_scaled):
         self.rect = rect
-        self.face_idx = face_idx   # identify matches by index
+        self.face_idx = face_idx
         self.face_img = face_img_scaled
         self.back_img = back_img_scaled
         self.flipped = False
@@ -168,93 +164,80 @@ class Card:
             surf.blit(self.face_img, self.rect)
         else:
             surf.blit(self.back_img, self.rect)
-        # subtle border
         pygame.draw.rect(surf, (0,0,0), self.rect, 2, border_radius=10)
 
+# -----------------------------
+# Layout helpers
+# -----------------------------
 def compute_grid(num_cards):
-    # Try to make it as square as possible
     cols = ceil(sqrt(num_cards))
     rows = ceil(num_cards / cols)
     return cols, rows
 
-def compute_card_size(cols, rows):
-    # Fit within the board area considering margins
-    # Board area = screen with top HUD strip
-    top_hud = 90
-    board_w = WIDTH - 2*BOARD_PAD
-    board_h = HEIGHT - top_hud - BOARD_PAD
+def compute_card_size(cols, rows, width=WIDTH, height=HEIGHT,
+                      padding=BOARD_PAD, cell_margin=CELL_MARGIN,
+                      top_hud=TOP_HUD, aspect=CARD_ASPECT):
+    board_w = width - 2 * padding
+    board_h = height - top_hud - padding
 
-    avail_w = board_w - (cols - 1) * CELL_MARGIN
-    avail_h = board_h - (rows - 1) * CELL_MARGIN
+    avail_w = board_w - (cols - 1) * cell_margin
+    avail_h = board_h - (rows - 1) * cell_margin
 
-    # Based on aspect ratio (w:h = CARD_ASPECT)
-    # So h = w / CARD_ASPECT
     max_w_by_width = avail_w / cols
     max_h_by_height = avail_h / rows
-
-    # Convert height constraint into width via aspect
-    max_w_from_h = max_h_by_height * CARD_ASPECT
+    max_w_from_h = max_h_by_height * aspect
 
     card_w = min(max_w_by_width, max_w_from_h)
-    card_h = card_w / CARD_ASPECT
+    card_h = card_w / aspect
 
-    # Cap sizes to something reasonable
-    card_w = max(40, min(180, card_w))
-    card_h = max(56, min(260, card_h))
-    return int(card_w), int(card_h), top_hud
+    card_w = max(CARD_MIN_W, min(CARD_MAX_W, card_w))
+    card_h = max(CARD_MIN_H, min(CARD_MAX_H, card_h))
 
-def layout_cards(level):
-    # Level N => N pairs => N*2 cards, use faces 1..N
+    return int(card_w), int(card_h)
+
+def get_scaled_images(card_w, card_h, back_raw, face_raws):
+    back_img = pygame.transform.smoothscale(back_raw, (card_w, card_h))
+    faces = [pygame.transform.smoothscale(img, (card_w, card_h)) for img in face_raws]
+    return back_img, faces
+
+def layout_cards(level, back_raw=back_raw, face_raws=face_raws):
     pairs = level
     num_cards = pairs * 2
     cols, rows = compute_grid(num_cards)
-    card_w, card_h, top_hud = compute_card_size(cols, rows)
-
-    # Scale images to card size
-    back_img = pygame.transform.smoothscale(back_raw, (card_w, card_h))
-    faces_scaled = [
-        pygame.transform.smoothscale(face_raws[i], (card_w, card_h)) for i in range(pairs)
-    ]
-
-    # Prepare shuffled deck as indices (two of each)
-    deck = []
-    for idx in range(pairs):
-        deck.append(idx)
-        deck.append(idx)
+    card_w, card_h = compute_card_size(cols, rows)
+    back_img_scaled, faces_scaled = get_scaled_images(card_w, card_h, back_raw, face_raws[:pairs])
+    deck = [i for i in range(pairs) for _ in (0,1)]
     random.shuffle(deck)
 
     board_w = cols * card_w + (cols - 1) * CELL_MARGIN
     board_h = rows * card_h + (rows - 1) * CELL_MARGIN
     start_x = (WIDTH - board_w) // 2
-    start_y = top_hud + (HEIGHT - top_hud - board_h) // 2
+    start_y = TOP_HUD + (HEIGHT - TOP_HUD - board_h) // 2
 
     cards = []
-    i = 0
-    for r in range(rows):
-        for c in range(cols):
-            if i >= len(deck): break
-            x = start_x + c * (card_w + CELL_MARGIN)
-            y = start_y + r * (card_h + CELL_MARGIN)
-            idx = deck[i]
-            rect = pygame.Rect(x, y, card_w, card_h)
-            cards.append(Card(rect, idx, faces_scaled[idx], back_img))
-            i += 1
+    for idx_pos, face_idx in enumerate(deck):
+        r = idx_pos // cols
+        c = idx_pos % cols
+        x = start_x + c * (card_w + CELL_MARGIN)
+        y = start_y + r * (card_h + CELL_MARGIN)
+        rect = pygame.Rect(x, y, card_w, card_h)
+        cards.append(Card(rect, face_idx, faces_scaled[face_idx], back_img_scaled))
 
-    return cards, (cols, rows), (card_w, card_h), top_hud
+    return cards, (cols, rows), (card_w, card_h)
 
 # -----------------------------
-# Screens: Home / High Scores / Game
+# Screens
 # -----------------------------
 def home_screen():
-    # Buttons
     btn_w, btn_h = 260, 60
     gap = 18
     center_x = WIDTH // 2
-    top_y = HEIGHT // 2 - btn_h - gap
 
-    btn_start = make_button(center_x - btn_w//2, top_y, btn_w, btn_h)
-    btn_scores = make_button(center_x - btn_w//2, top_y + btn_h + gap, btn_w, btn_h)
-    btn_quit = make_button(center_x - btn_w//2, top_y + 2*(btn_h + gap), btn_w, btn_h)
+    # Buttons start Y will be computed dynamically below
+    btn_start_y = 0  # placeholder
+    btn_start = make_button(center_x - btn_w//2, 0, btn_w, btn_h)  # y to update
+    btn_scores = make_button(center_x - btn_w//2, 0, btn_w, btn_h)
+    btn_quit = make_button(center_x - btn_w//2, 0, btn_w, btn_h)
 
     while True:
         mx, my = pygame.mouse.get_pos()
@@ -264,36 +247,39 @@ def home_screen():
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE: pygame.quit(); sys.exit()
                 if event.key in (pygame.K_SPACE, pygame.K_RETURN):
-                    snd_button.play()
-                    return "start"
+                    snd_button.play(); return "start"
                 if event.key == pygame.K_h:
-                    snd_button.play()
-                    return "scores"
+                    snd_button.play(); return "scores"
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 click = True
 
         screen.fill(BG_COLOR)
 
-        # Title/logo
-        title_rect = draw_text_center("Memory Match", FONT_LG, ACCENT, (WIDTH//2, 120))
-        draw_text_center("32 Levels • Save Best Times", FONT_SM, MUTED, (WIDTH//2, title_rect.bottom + 26))
-
+        # --- Draw Logo at top center ---
+        logo_bottom_y = 40
         if LOGO:
             logo_scaled_w = 120
             ratio = LOGO.get_width() / LOGO.get_height() if LOGO.get_height() else 1
             logo_scaled_h = int(logo_scaled_w / ratio)
-            logo = pygame.transform.smoothscale(LOGO, (logo_scaled_w, logo_scaled_h))
-            logo_rect = logo.get_rect(center=(WIDTH//2, title_rect.top - logo_scaled_h//2 - 10))
-            screen.blit(logo, logo_rect)
+            logo_img = pygame.transform.smoothscale(LOGO, (logo_scaled_w, logo_scaled_h))
+            logo_rect = logo_img.get_rect(center=(WIDTH//2, logo_bottom_y + logo_scaled_h//2))
+            screen.blit(logo_img, logo_rect)
+            logo_bottom_y += logo_scaled_h + 20  # space after logo
 
-        # Buttons
-        for rect, label in [(btn_start, "Start Game"),
-                            (btn_scores, "High Scores"),
-                            (btn_quit, "Quit")]:
+        # --- Draw title below logo ---
+        title_rect = draw_text_center("Memory Match", FONT_LG, ACCENT, (WIDTH//2, logo_bottom_y + FONT_LG.get_height()//2))
+        subtitle_rect = draw_text_center("32 Levels • Save Best Times", FONT_SM, MUTED, (WIDTH//2, title_rect.bottom + 14))
+
+        # --- Compute button positions below subtitle ---
+        btn_start_y = subtitle_rect.bottom + 40
+        btn_start.y = btn_start_y
+        btn_scores.y = btn_start_y + btn_h + gap
+        btn_quit.y = btn_start_y + 2*(btn_h + gap)
+
+        for rect, label in [(btn_start, "Start Game"), (btn_scores, "High Scores"), (btn_quit, "Quit")]:
             hover = rect.collidepoint(mx, my)
             draw_button(label, rect, hover)
 
-        # Quick best for Level 1
         best1 = scores.get("1", None)
         tip = "Tip: Press H for Scores" if best1 is None else f"Best Level 1: {best1}s"
         draw_text_center(tip, FONT_XS, MUTED, (WIDTH//2, btn_quit.bottom + 30))
@@ -309,8 +295,9 @@ def home_screen():
         pygame.display.flip()
         clock.tick(FPS)
 
+
+
 def scores_screen():
-    # Back button
     btn_back = make_button(BOARD_PAD, HEIGHT - BOARD_PAD - 48, 160, 48)
     scroll = 0
     items_per_col = 16
@@ -331,8 +318,6 @@ def scores_screen():
         screen.fill(BG_COLOR)
         draw_text_center("High Scores", FONT_LG, ACCENT, (WIDTH//2, 90))
 
-        # Grid of scores
-        # Levels 1..32
         for i in range(32):
             level = i + 1
             col = i // items_per_col
@@ -345,7 +330,6 @@ def scores_screen():
             draw_text_left(label, FONT_SM, WHITE, (x, y))
             draw_text_left(value, FONT_SM, ACCENT if best is not None else MUTED, (x + 150, y))
 
-        # Back
         hover = btn_back.collidepoint(mx, my)
         draw_button("Back", btn_back, hover)
 
@@ -355,15 +339,16 @@ def scores_screen():
         pygame.display.flip()
         clock.tick(FPS)
 
+# -----------------------------
+# Game Screen
+# -----------------------------
 def game_screen(level):
-    cards, (cols, rows), (cw, ch), top_hud = layout_cards(level)
+    cards, (cols, rows), (cw, ch) = layout_cards(level)
     flipped = []
     matches = 0
     total_pairs = level
     moves = 0
     start_ts = time.time()
-
-    # Pause after win
     post_win_ms = 2200
 
     running = True
@@ -374,10 +359,8 @@ def game_screen(level):
         for event in pygame.event.get():
             if event.type == pygame.QUIT: pygame.quit(); sys.exit()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                # Return to home
                 return False
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                # Flip logic
                 for card in cards:
                     if card.rect.collidepoint(event.pos) and not card.flipped and not card.matched:
                         if len(flipped) < 2:
@@ -386,7 +369,6 @@ def game_screen(level):
                             flipped.append(card)
                         break
 
-        # Check pair
         if len(flipped) == 2:
             pygame.display.flip()
             pygame.time.delay(350)
@@ -401,11 +383,8 @@ def game_screen(level):
                 a.flipped = b.flipped = False
             flipped.clear()
 
-        # Draw background and HUD panel
         screen.fill(BG_COLOR)
-        pygame.draw.rect(screen, PANEL_COLOR, (0, 0, WIDTH, top_hud))
-
-        # HUD
+        pygame.draw.rect(screen, PANEL_COLOR, (0, 0, WIDTH, TOP_HUD))
         elapsed = int(time.time() - start_ts)
         best = scores.get(str(level))
         draw_text_left(f"Level {level}", FONT_MD, WHITE, (BOARD_PAD, 26))
@@ -415,31 +394,26 @@ def game_screen(level):
             draw_text_left(f"Best: {best}s", FONT_MD, ACCENT, (BOARD_PAD + 620, 26))
         else:
             draw_text_left("Best: —", FONT_MD, MUTED, (BOARD_PAD + 620, 26))
-        draw_text_left("ESC: Home", FONT_SM, MUTED, (WIDTH - 150, 30))
+        draw_text_left("ESC: Home", FONT_SM, MUTED, (WIDTH - 130, 10))
 
-        # Draw cards
         for c in cards:
             c.draw(screen)
 
-        # Win condition
         if matches == total_pairs:
             snd_win.play()
             elapsed = int(time.time() - start_ts)
-            # Save best if improved
             prev = scores.get(str(level))
             if prev is None or elapsed < prev:
                 scores[str(level)] = elapsed
                 save_scores(scores)
-
-            # Overlay
             overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-            overlay.fill((0, 0, 0, 150))
-            screen.blit(overlay, (0, 0))
+            overlay.fill((0,0,0,150))
+            screen.blit(overlay, (0,0))
             draw_text_center(f"Level {level} Complete!", FONT_LG, ACCENT, (WIDTH//2, HEIGHT//2 - 20))
             draw_text_center(f"Time {elapsed}s • Moves {moves}", FONT_MD, WHITE, (WIDTH//2, HEIGHT//2 + 40))
             pygame.display.flip()
             pygame.time.delay(post_win_ms)
-            return True  # proceed to next level
+            return True
 
         pygame.display.flip()
 
@@ -453,12 +427,10 @@ def main():
             scores_screen()
             continue
         if action == "start":
-            # Play through levels 1..32, allow exit back to Home
             for lv in range(1, 33):
                 proceed = game_screen(lv)
                 if not proceed:
                     break
-            # After finishing or exiting, loop back to Home
 
 if __name__ == "__main__":
     try:
