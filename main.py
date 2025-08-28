@@ -1,528 +1,188 @@
-import os
-import sys
-import json
-import time
-import random
-import math
 import pygame
-from typing import List, Tuple
+import random
+import sys
+import os
 
-# ---------------------------
-# Basic setup & constants
-# ---------------------------
+# --------------------------
+# Init
+# --------------------------
 pygame.init()
 pygame.mixer.init()
 
-WIDTH, HEIGHT = 900, 640
+WIDTH, HEIGHT = 1000, 700
 FPS = 60
+CARD_SIZE = (100, 140)
+GRID_COLS = 8
+GRID_ROWS = 8
+MARGIN = 10
+
+# Colors
 BG_COLOR = (12, 14, 22)
-ACCENT = (0, 191, 255)
-TEXT = (230, 238, 255)
+WHITE = (255, 255, 255)
+ACCENT = (0, 200, 255)
 
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Mythic Match Quest — robust edition")
+pygame.display.set_caption("Memory Match Game")
+
 clock = pygame.time.Clock()
 
-FONT_LG = pygame.font.SysFont("Segoe UI", 42)
-FONT_MD = pygame.font.SysFont("Segoe UI", 26)
-FONT_SM = pygame.font.SysFont("Segoe UI", 18)
+# --------------------------
+# Load Assets
+# --------------------------
+def load_image(path, size=None):
+    img = pygame.image.load(path).convert_alpha()
+    if size:
+        img = pygame.transform.smoothscale(img, size)
+    return img
 
-# ---------------------------
-# Utilities
-# ---------------------------
-ASSETS_DIR = os.path.abspath("assets")
-SOUNDS_DIR = os.path.abspath("sounds")
-IMAGES_DIR = os.path.abspath("images")
+def load_sound(path):
+    return pygame.mixer.Sound(path)
 
-for d in [ASSETS_DIR, SOUNDS_DIR, IMAGES_DIR]:
-    if not os.path.isdir(d):
-        os.makedirs(d, exist_ok=True)
+# Folders
+IMG_FOLDER = "images"
+SND_FOLDER = "sounds"
+AST_FOLDER = "assets"
 
+# Images
+back_img = load_image(os.path.join(IMG_FOLDER, "back.png"), CARD_SIZE)
+card_faces = [load_image(os.path.join(IMG_FOLDER, f"{i}.png"), CARD_SIZE) for i in range(1, 33)]
 
-def safe_load_sound(name: str):
-    """Try to load a sound. Return None on failure (game will continue silently)."""
-    path = os.path.join(SOUNDS_DIR, name)
-    try:
-        if os.path.exists(path):
-            return pygame.mixer.Sound(path)
-    except Exception:
-        pass
-    return None
+# Sounds
+snd_flip = load_sound(os.path.join(SND_FOLDER, "flip.wav"))
+snd_match = load_sound(os.path.join(SND_FOLDER, "match.wav"))
+snd_mismatch = load_sound(os.path.join(SND_FOLDER, "mismatch.wav"))
+snd_win = load_sound(os.path.join(SND_FOLDER, "win.wav"))
+snd_button = load_sound(os.path.join(SND_FOLDER, "button.wav"))
 
+# Font
+font = pygame.font.Font(os.path.join(AST_FOLDER, "font.ttf"), 40)
 
-# Optional sounds
-SND_FLIP = safe_load_sound("flip.mp3") or safe_load_sound("flip.wav")
-SND_MATCH = safe_load_sound("match.mp3") or safe_load_sound("match.wav")
-SND_MISMATCH = safe_load_sound("mismatch.mp3") or safe_load_sound("mismatch.wav")
-SND_WIN = safe_load_sound("win.mp3") or safe_load_sound("win.wav")
-SND_LEVELUP = safe_load_sound("levelup.mp3") or safe_load_sound("levelup.wav")
+# Music
+try:
+    pygame.mixer.music.load(os.path.join(AST_FOLDER, "bg_music.mp3"))
+    pygame.mixer.music.play(-1)  # loop forever
+    pygame.mixer.music.set_volume(0.2)
+except:
+    print("Background music not found")
 
-MUSIC_TRACKS = [os.path.join(SOUNDS_DIR, f"level{i}.mp3") for i in (1, 2, 3)]
-
-
-# ---------------------------
-# Image helpers
-# ---------------------------
-def list_card_images() -> List[str]:
-    """Return sorted list of image file paths (jpg/png) inside images/ excluding back.* """
-    if not os.path.isdir(IMAGES_DIR):
-        return []
-    files = []
-    for f in os.listdir(IMAGES_DIR):
-        fl = f.lower()
-        if fl.startswith("back."):
-            continue
-        if fl.endswith((".jpg", ".jpeg", ".png")):
-            files.append(os.path.join(IMAGES_DIR, f))
-    files.sort()
-    return files
-
-
-def load_surface_keep_ratio(path: str, target: Tuple[int, int]) -> pygame.Surface:
-    """Load an image and fit it into target size while preserving aspect ratio."""
-    tw, th = target
-    if path.startswith("dummy_"):
-        surf = pygame.Surface(target, pygame.SRCALPHA)
-        try:
-            idx = int(path.split("_")[1])
-            color = ((idx * 50) % 255, (idx * 100) % 255, (idx * 150) % 255)
-        except:
-            idx = 0
-            color = (100, 150, 200)
-        surf.fill(color)
-        text = FONT_MD.render(f"Pair {idx+1}", True, (255, 255, 255))
-        surf.blit(text, text.get_rect(center=(tw // 2, th // 2)))
-        pygame.draw.rect(surf, (255, 255, 255), surf.get_rect(), 2, border_radius=12)
-        return surf
-
-    try:
-        img = pygame.image.load(path).convert_alpha()
-        w, h = img.get_size()
-        scale = min(tw / w, th / h)
-        nw, nh = max(1, int(w * scale)), max(1, int(h * scale))
-        img = pygame.transform.smoothscale(img, (nw, nh))
-        surf = pygame.Surface((tw, th), pygame.SRCALPHA)
-        surf.fill((22, 26, 34))
-        rect = img.get_rect(center=(tw // 2, th // 2))
-        surf.blit(img, rect)
-        pygame.draw.rect(surf, (60, 70, 92), surf.get_rect(), 2, border_radius=12)
-        return surf
-    except Exception:
-        surf = pygame.Surface(target, pygame.SRCALPHA)
-        surf.fill((30, 34, 46))
-        text = FONT_SM.render("No Image", True, ACCENT)
-        surf.blit(text, text.get_rect(center=(tw // 2, th // 2)))
-        pygame.draw.rect(surf, ACCENT, surf.get_rect(), 3, border_radius=12)
-        return surf
-
-
-def make_back_surface(size: Tuple[int, int]) -> pygame.Surface:
-    w, h = size
-    surf = pygame.Surface((w, h), pygame.SRCALPHA)
-    for i in range(h):
-        t = i / max(1, h - 1)
-        c = (int(18 + 8 * t), int(22 + 12 * t), int(34 + 24 * t))
-        pygame.draw.line(surf, c, (0, i), (w, i))
-    pygame.draw.rect(surf, ACCENT, surf.get_rect(), 3, border_radius=14)
-    pygame.draw.circle(surf, ACCENT, (w // 2, h // 2), min(w, h) // 6, 2)
-    pygame.draw.line(surf, ACCENT, (w // 2, h // 2 - 10), (w // 2, h // 2 + 10), 2)
-    pygame.draw.line(surf, ACCENT, (w // 2 - 10, h // 2), (w // 2 + 10, h // 2), 2)
-    return surf
-
-
-# ---------------------------
-# Card sprite
-# ---------------------------
-CARD_SIZE = (100, 140)
-
-
-class Card(pygame.sprite.Sprite):
-    def __init__(self, front_path: str, pos: Tuple[int, int], pair_id: int):
-        super().__init__()
-        self.front_surf = load_surface_keep_ratio(front_path, CARD_SIZE)
-        self.back_surf = make_back_surface(CARD_SIZE)
-        self.image = self.back_surf.copy()
-        self.rect = self.image.get_rect(topleft=pos)
-
-        self.id = pair_id
-        self.is_front = False
+# --------------------------
+# Game Objects
+# --------------------------
+class Card:
+    def __init__(self, x, y, face):
+        self.rect = pygame.Rect(x, y, CARD_SIZE[0], CARD_SIZE[1])
+        self.face = face
+        self.flipped = False
         self.matched = False
-        self.animating = False
-        self.flip_progress = 0.0
 
-    def instant_show_back(self):
-        self.is_front = False
-        self.image = self.back_surf
-
-    def instant_show_front(self):
-        self.is_front = True
-        self.image = self.front_surf
-
-    def trigger_flip(self):
-        if self.animating or self.matched:
-            return
-        self.animating = True
-        self.flip_progress = 0.0
-        if SND_FLIP:
-            SND_FLIP.play()
-
-    def update(self, dt: float):
-        if not self.animating:
-            return
-        speed = 6.0
-        self.flip_progress += speed * dt
-        if self.flip_progress >= 1.0:
-            self.flip_progress = 1.0
-            self.animating = False
-            self.is_front = not self.is_front
-            self.image = self.front_surf if self.is_front else self.back_surf
-
-        phase = self.flip_progress
-        if phase < 0.5:
-            scale = max(0.05, 1.0 - (phase * 2))
-            surf = self.front_surf if self.is_front else self.back_surf
+    def draw(self, surf):
+        if self.matched or self.flipped:
+            surf.blit(self.face, self.rect)
         else:
-            scale = max(0.05, (phase - 0.5) * 2)
-            surf = self.back_surf if self.is_front else self.front_surf
-        w, h = surf.get_size()
-        new_w = max(1, int(w * scale))
-        scaled = pygame.transform.smoothscale(surf, (new_w, h))
-        self.image = pygame.Surface((w, h), pygame.SRCALPHA)
-        self.image.blit(scaled, scaled.get_rect(center=(w // 2, h // 2)))
+            surf.blit(back_img, self.rect)
 
+# --------------------------
+# Build Card Grid
+# --------------------------
+def create_cards():
+    # Take 32 faces -> duplicate -> shuffle
+    faces = card_faces * 2
+    random.shuffle(faces)
 
-# ---------------------------
-# Game logic
-# ---------------------------
-class Game:
-    def __init__(self):
-        self.levels = [
-            (4, 60),   # 4x4
-            (6, 100),  # 6x6
-            (8, 160),  # 8x8
-        ]
-        self.level_index = 0
+    cards = []
+    start_x = (WIDTH - (GRID_COLS * (CARD_SIZE[0] + MARGIN))) // 2
+    start_y = (HEIGHT - (GRID_ROWS * (CARD_SIZE[1] + MARGIN))) // 2
 
-        self.cards = pygame.sprite.Group()
-        self.flipped_cache: List[Card] = []
-        self.matches = 0
-        self.flips = 0
-        self.score = 0
-        self.time_start = 0.0
-        self.time_limit = 0.0
-        self.game_over = False
-        self.paused = False
+    for row in range(GRID_ROWS):
+        for col in range(GRID_COLS):
+            x = start_x + col * (CARD_SIZE[0] + MARGIN)
+            y = start_y + row * (CARD_SIZE[1] + MARGIN)
+            face = faces.pop()
+            cards.append(Card(x, y, face))
+    return cards
 
-        self.high_scores = self.load_high_scores()
+# --------------------------
+# Screens
+# --------------------------
+def draw_text(text, size, color, center):
+    fnt = pygame.font.Font(os.path.join(AST_FOLDER, "font.ttf"), size)
+    txt = fnt.render(text, True, color)
+    rect = txt.get_rect(center=center)
+    screen.blit(txt, rect)
 
-    # ---------------- persistence ----------------
-    def load_high_scores(self):
-        path = os.path.join(ASSETS_DIR, "high_scores.json")
-        if os.path.exists(path):
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                for k in ("0", "1", "2"):
-                    data.setdefault(k, 0)
-                return data
-            except Exception:
-                pass
-        data = {"0": 0, "1": 0, "2": 0}
-        try:
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(data, f)
-        except Exception:
-            pass
-        return data
+def home_screen():
+    running = True
+    while running:
+        screen.fill(BG_COLOR)
+        draw_text("Memory Match Game", 64, ACCENT, (WIDTH // 2, HEIGHT // 3))
+        draw_text("Press SPACE to Start", 40, WHITE, (WIDTH // 2, HEIGHT // 2))
+        draw_text("Press ESC to Quit", 30, WHITE, (WIDTH // 2, HEIGHT // 2 + 60))
 
-    def save_high_scores(self):
-        path = os.path.join(ASSETS_DIR, "high_scores.json")
-        try:
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(self.high_scores, f)
-        except Exception:
-            pass
-
-    # ---------------- screens ----------------
-    def home(self):
-        available_images = list_card_images()
-        running = True
-        blink = 0
-        while running:
-            dt = clock.tick(FPS) / 1000.0
-            for e in pygame.event.get():
-                if e.type == pygame.QUIT:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit(); sys.exit()
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_SPACE:
+                    snd_button.play()
+                    running = False
+                if event.key == pygame.K_ESCAPE:
                     pygame.quit(); sys.exit()
-                if e.type == pygame.KEYDOWN:
-                    if e.key == pygame.K_1:
-                        self.level_index = 0; running = False
-                    elif e.key == pygame.K_2:
-                        self.level_index = 1; running = False
-                    elif e.key == pygame.K_3:
-                        self.level_index = 2; running = False
-                    elif e.key == pygame.K_q:
-                        pygame.quit(); sys.exit()
-            blink = (blink + dt) % 1.0
-
-            screen.fill(BG_COLOR)
-            self.draw_starfield()
-
-            title = FONT_LG.render("Mythic Match Quest", True, ACCENT)
-            screen.blit(title, title.get_rect(center=(WIDTH//2, 100)))
-
-            info = [
-                "1: Easy (4x4)",
-                "2: Medium (6x6)",
-                "3: Hard (8x8)",
-                "H: In-level hint  |  P: Pause  |  Q: Quit",
-                f"Images found: {len(available_images)} (put JPG/PNG in /images)",
-                f"High Scores:  E:{self.high_scores['0']}  M:{self.high_scores['1']}  H:{self.high_scores['2']}",
-            ]
-            for i, line in enumerate(info):
-                surf = FONT_MD.render(line, True, TEXT)
-                screen.blit(surf, (WIDTH//2 - 260, 200 + i*40))
-
-            press = FONT_MD.render(
-                "Press 1 / 2 / 3 to start", True,
-                (TEXT if blink < 0.5 else (90, 100, 120))
-            )
-            screen.blit(press, press.get_rect(center=(WIDTH//2, HEIGHT - 80)))
-
-            pygame.display.flip()
-
-    # ---------------- level logic ----------------
-    def run_level(self):
-        cols = rows = self.levels[self.level_index][0]
-        self.time_limit = float(self.levels[self.level_index][1])
-        total_pairs_needed = (cols * rows) // 2
-
-        imgs = list_card_images()
-        if not imgs:
-            imgs = [f"dummy_{i}" for i in range(total_pairs_needed)]
-        else:
-            if len(imgs) < total_pairs_needed:
-                repeats = math.ceil(total_pairs_needed / len(imgs))
-                imgs = (imgs * repeats)[:total_pairs_needed]
-            else:
-                imgs = random.sample(imgs,total_pairs_needed)
-
-        deck = imgs * 2
-        random.shuffle(deck)
-
-        self.cards.empty()
-        margin_x, margin_y = 40, 80
-        grid_w = WIDTH - margin_x*2
-        grid_h = HEIGHT - margin_y*2
-        spacing_x = grid_w // cols
-        spacing_y = grid_h // rows
-
-        k = 0
-        for r in range(rows):
-            for c in range(cols):
-                x = margin_x + c * spacing_x + (spacing_x - CARD_SIZE[0]) // 2
-                y = margin_y + r * spacing_y + (spacing_y - CARD_SIZE[1]) // 2
-                pair_id = imgs.index(deck[k])
-                card = Card(deck[k], (x, y), pair_id)
-                self.cards.add(card)
-                k += 1
-
-        self.flipped_cache.clear()
-        self.matches = 0
-        self.flips = 0
-        self.score = 1000
-        self.time_start = time.time()
-        self.game_over = False
-        self.paused = False
-
-        try:
-            music_path = MUSIC_TRACKS[self.level_index]
-            if os.path.exists(music_path):
-                pygame.mixer.music.load(music_path)
-                pygame.mixer.music.play(-1)
-            else:
-                pygame.mixer.music.stop()
-        except Exception:
-            pygame.mixer.music.stop()
-
-        while not self.game_over:
-            dt = clock.tick(FPS) / 1000.0
-            for e in pygame.event.get():
-                if e.type == pygame.QUIT:
-                    pygame.quit(); sys.exit()
-                if e.type == pygame.KEYDOWN:
-                    if e.key == pygame.K_p:
-                        self.paused = not self.paused
-                        if self.paused:
-                            self.pause_start = time.time()
-                        else:
-                            if hasattr(self, 'pause_start'):
-                                self.time_start += (time.time() - self.pause_start)
-                                del self.pause_start
-                    elif e.key == pygame.K_h and not self.paused:
-                        hidden = [cd for cd in self.cards if not cd.is_front and not cd.matched and not cd.animating]
-                        if hidden:
-                            self.score = max(0, self.score - 25)
-                            random.choice(hidden).trigger_flip()
-                    elif e.key == pygame.K_q:
-                        pygame.quit(); sys.exit()
-                if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1 and not self.paused:
-                    self.handle_click(e.pos)
-
-            if not self.paused:
-                for cd in self.cards:
-                    cd.update(dt)
-                self.check_auto_close_flip()
-
-            elapsed = time.time() - self.time_start
-            remaining = max(0.0, self.time_limit - elapsed)
-            if not self.paused:
-                self.score = max(0, 1000 - self.flips * 6 - int(elapsed) * 3 + int(remaining))
-
-            screen.fill(BG_COLOR)
-            self.draw_starfield()
-            self.cards.draw(screen)
-
-            ui = FONT_MD.render(
-                f"Score: {self.score}   Time Left: {int(remaining)}s   Flips: {self.flips}", True, TEXT
-            )
-            screen.blit(ui, (18, 14))
-
-            lvl = FONT_SM.render(
-                f"Level {self.level_index+1} — Press P to Pause, H for hint (-25)", True, (160, 180, 200)
-            )
-            screen.blit(lvl, (18, 46))
-
-            if self.paused:
-                self.draw_center_banner("Paused — press P to resume")
-
-            pygame.display.flip()
-
-            if remaining <= 0 and not self.game_over:
-                self.end_level(win=False)
-
-        pygame.mixer.music.stop()
-        self.level_index = min(2, self.level_index + 1) if self.last_win else self.level_index
-
-    def handle_click(self, pos: Tuple[int, int]):
-        if len(self.flipped_cache) >= 2:
-            return
-        for card in self.cards:
-            if card.rect.collidepoint(pos) and not card.matched and not card.animating:
-                if not card.is_front:
-                    card.trigger_flip()
-                    self.flips += 1
-                return
-
-    def check_auto_close_flip(self):
-        for cd in self.cards:
-            if cd.animating is False and cd.is_front and cd not in self.flipped_cache and not cd.matched:
-                self.flipped_cache.append(cd)
-
-        if len(self.flipped_cache) == 2:
-            c1, c2 = self.flipped_cache
-            if c1.id == c2.id:
-                c1.matched = c2.matched = True
-                self.matches += 1
-                if SND_MATCH:
-                    SND_MATCH.play()
-                self.flipped_cache.clear()
-                if self.matches == len(self.cards) // 2:
-                    self.end_level(win=True)
-            else:
-                if SND_MISMATCH:
-                    SND_MISMATCH.play()
-                def flip_back_after_delay():
-                    c1.trigger_flip(); c2.trigger_flip()
-                    self.flipped_cache.clear()
-                self._pending_flipback = (time.time() + 0.6, flip_back_after_delay)
-
-        if hasattr(self, "_pending_flipback"):
-            t, fn = self._pending_flipback
-            if time.time() >= t:
-                try:
-                    fn()
-                finally:
-                    delattr(self, "_pending_flipback")
-
-    def end_level(self, win: bool):
-        self.game_over = True
-        self.last_win = win
-        if win:
-            if SND_WIN:
-                SND_WIN.play()
-            key = str(self.level_index)
-            self.high_scores[key] = max(self.high_scores.get(key, 0), int(self.score))
-            self.save_high_scores()
-            self.draw_center_banner("Level Complete! Press Enter for next / Esc Home")
-            if SND_LEVELUP:
-                SND_LEVELUP.play()
-        else:
-            self.draw_center_banner("Time's up! Press Enter to retry / Esc Home")
 
         pygame.display.flip()
-        waiting = True
-        while waiting:
-            for e in pygame.event.get():
-                if e.type == pygame.QUIT:
-                    pygame.quit(); sys.exit()
-                if e.type == pygame.KEYDOWN:
-                    if e.key == pygame.K_RETURN:
-                        waiting = False
-                    if e.key == pygame.K_ESCAPE:
-                        waiting = False
-                        self.level_index = self.level_index
-                        self.last_win = False
-                        self._go_home_after = True
-            clock.tick(FPS)
+        clock.tick(FPS)
 
-    # ---------------- draw helpers ----------------
-    def draw_starfield(self):
-        rnd = random.Random(12345)
-        for _ in range(100):
-            x = rnd.randint(0, WIDTH)
-            y = rnd.randint(0, HEIGHT)
-            r = rnd.choice([1, 1, 2])
-            pygame.draw.circle(screen, (255, 255, 255), (x, y), r)
+def game_screen():
+    cards = create_cards()
+    flipped_cards = []
+    matches_found = 0
+    total_pairs = len(cards) // 2
 
-    def draw_center_banner(self, text: str):
-        banner = pygame.Surface((WIDTH - 160, 120), pygame.SRCALPHA)
-        banner.fill((0, 0, 0, 160))
-        pygame.draw.rect(banner, ACCENT, banner.get_rect(), 2, border_radius=18)
-        t = FONT_MD.render(text, True, TEXT)
-        banner.blit(t, t.get_rect(center=(banner.get_width()//2, banner.get_height()//2)))
-        screen.blit(banner, banner.get_rect(center=(WIDTH//2, HEIGHT//2)))
+    running = True
+    while running:
+        screen.fill(BG_COLOR)
 
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit(); sys.exit()
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                for card in cards:
+                    if card.rect.collidepoint(event.pos) and not card.flipped and not card.matched:
+                        snd_flip.play()
+                        card.flipped = True
+                        flipped_cards.append(card)
 
-# ---------------------------
-# Main entry
-# ---------------------------
-if __name__ == "__main__":
-    game = Game()
-    while True:
-        game._go_home_after = False
-        game.home()
-        game.run_level()
+        # Check matches
+        if len(flipped_cards) == 2:
+            pygame.time.delay(400)  # small pause
+            if flipped_cards[0].face == flipped_cards[1].face:
+                snd_match.play()
+                flipped_cards[0].matched = True
+                flipped_cards[1].matched = True
+                matches_found += 1
+            else:
+                snd_mismatch.play()
+                flipped_cards[0].flipped = False
+                flipped_cards[1].flipped = False
+            flipped_cards = []
 
-        # Decide where to go next
-        if getattr(game, "_go_home_after", False):
-            continue
+        # Draw cards
+        for card in cards:
+            card.draw(screen)
 
-        # If completed a level and there is a next, continue automatically
-        if game.last_win and game.level_index < 2:  # max index is 2 (0,1,2)
-            continue
-
-        # If player just finished the last level
-        if game.last_win and game.level_index == 2:
-            game.draw_center_banner("🎉 You finished all levels! Press Esc to quit")
+        # Check win
+        if matches_found == total_pairs:
+            snd_win.play()
+            draw_text("You Win!", 70, ACCENT, (WIDTH // 2, HEIGHT // 2))
             pygame.display.flip()
-            waiting = True
-            while waiting:
-                for e in pygame.event.get():
-                    if e.type == pygame.QUIT:
-                        pygame.quit(); sys.exit()
-                    if e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
-                        pygame.quit(); sys.exit()
-                clock.tick(FPS)
+            pygame.time.wait(3000)
+            return  # back to home
 
-        # otherwise, back to home
-        continue
+        pygame.display.flip()
+        clock.tick(FPS)
+
+# --------------------------
+# Main Loop
+# --------------------------
+while True:
+    home_screen()
+    game_screen()
