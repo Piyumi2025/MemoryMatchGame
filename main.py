@@ -88,7 +88,7 @@ def load_surface_keep_ratio(path: str, target: Tuple[int, int]) -> pygame.Surfac
             color = ((idx * 50) % 255, (idx * 100) % 255, (idx * 150) % 255)
         except:
             idx = 0
-            color = (100, 150, 200)
+            color = (150, 150, 200)
         surf.fill(color)
         text = FONT_MD.render(f"Pair {idx+1}", True, (255, 255, 255))
         surf.blit(text, text.get_rect(center=(tw // 2, th // 2)))
