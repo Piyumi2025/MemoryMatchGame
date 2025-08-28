@@ -205,7 +205,12 @@ def layout_cards(level, back_raw=back_raw, face_raws=face_raws):
     num_cards = pairs * 2
     cols, rows = compute_grid(num_cards)
     card_w, card_h = compute_card_size(cols, rows)
-    back_img_scaled, faces_scaled = get_scaled_images(card_w, card_h, back_raw, face_raws[:pairs])
+
+    # --- Randomly pick 'pairs' images from all 32 ---
+    selected_faces = random.sample(face_raws, pairs)
+    back_img_scaled, faces_scaled = get_scaled_images(card_w, card_h, back_raw, selected_faces)
+
+    # Create deck indices (0..pairs-1, twice)
     deck = [i for i in range(pairs) for _ in (0,1)]
     random.shuffle(deck)
 
@@ -233,9 +238,7 @@ def home_screen():
     gap = 18
     center_x = WIDTH // 2
 
-    # Buttons start Y will be computed dynamically below
-    btn_start_y = 0  # placeholder
-    btn_start = make_button(center_x - btn_w//2, 0, btn_w, btn_h)  # y to update
+    btn_start = make_button(center_x - btn_w//2, 0, btn_w, btn_h)
     btn_scores = make_button(center_x - btn_w//2, 0, btn_w, btn_h)
     btn_quit = make_button(center_x - btn_w//2, 0, btn_w, btn_h)
 
@@ -255,7 +258,7 @@ def home_screen():
 
         screen.fill(BG_COLOR)
 
-        # --- Draw Logo at top center ---
+        # --- Draw Logo ---
         logo_bottom_y = 40
         if LOGO:
             logo_scaled_w = 120
@@ -264,13 +267,13 @@ def home_screen():
             logo_img = pygame.transform.smoothscale(LOGO, (logo_scaled_w, logo_scaled_h))
             logo_rect = logo_img.get_rect(center=(WIDTH//2, logo_bottom_y + logo_scaled_h//2))
             screen.blit(logo_img, logo_rect)
-            logo_bottom_y += logo_scaled_h + 20  # space after logo
+            logo_bottom_y += logo_scaled_h + 20
 
-        # --- Draw title below logo ---
+        # --- Title & subtitle ---
         title_rect = draw_text_center("Memory Match", FONT_LG, ACCENT, (WIDTH//2, logo_bottom_y + FONT_LG.get_height()//2))
         subtitle_rect = draw_text_center("32 Levels • Save Best Times", FONT_SM, MUTED, (WIDTH//2, title_rect.bottom + 14))
 
-        # --- Compute button positions below subtitle ---
+        # --- Buttons ---
         btn_start_y = subtitle_rect.bottom + 40
         btn_start.y = btn_start_y
         btn_scores.y = btn_start_y + btn_h + gap
@@ -294,8 +297,6 @@ def home_screen():
 
         pygame.display.flip()
         clock.tick(FPS)
-
-
 
 def scores_screen():
     btn_back = make_button(BOARD_PAD, HEIGHT - BOARD_PAD - 48, 160, 48)
