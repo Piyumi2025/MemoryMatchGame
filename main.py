@@ -17,7 +17,7 @@ WIDTH, HEIGHT = 900, 640
 FPS = 60
 BG_COLOR = (12, 14, 22)
 ACCENT = (0, 191, 255)
-TEXT = (230, 238, 255)
+TEXT = (232, 238, 255)
 
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Mythic Match Quest — robust edition")
