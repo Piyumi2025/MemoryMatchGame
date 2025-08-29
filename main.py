@@ -142,7 +142,7 @@ def draw_text_left(text, font, color, topleft, surface=screen):
 
 def draw_button(label, rect, hover, font=FONT_MD):
     pygame.draw.rect(screen, ACCENT if hover else ACCENT_DARK, rect, border_radius=16)
-    draw_text_center(label, font, (10, 14, 16), rect.center)
+    draw_text_center(label, font, (10, 14, 18), rect.center)
 
 def make_button(x, y, w, h):
     return pygame.Rect(int(x), int(y), int(w), int(h))
