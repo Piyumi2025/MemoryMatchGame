@@ -50,7 +50,7 @@ def load_image(path):
     except Exception as e:
         print(f"[warn] Could not load image: {path} -> {e}")
         surf = pygame.Surface((100, 140), pygame.SRCALPHA)
-        surf.fill((60, 60, 60))
+        surf.fill((60, 60, 80))
         pygame.draw.line(surf, (120, 120, 160), (0,0), (100,140), 3)
         pygame.draw.line(surf, (120, 120, 160), (100,0), (0,140), 3)
         return surf
