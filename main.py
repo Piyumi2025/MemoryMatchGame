@@ -21,7 +21,7 @@ WHITE = (240, 244, 248)
 MUTED = (170, 178, 186)
 ACCENT = (0, 200, 255)
 ACCENT_DARK = (0, 140, 200)
-RED = (230, 80, 60)
+RED = (230, 80, 80)
 
 # --- window & layout constants ---
 BOARD_PAD = 24
