@@ -25,7 +25,7 @@ RED = (230, 80, 80)
 
 # --- window & layout constants ---
 BOARD_PAD = 24
-CELL_MARGIN = 8
+CELL_MARGIN = 6
 TOP_HUD = 90
 CARD_ASPECT = 5 / 7
 CARD_MIN_W, CARD_MIN_H = 40, 48
