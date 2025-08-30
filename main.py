@@ -15,7 +15,7 @@ pygame.mixer.init()
 WIDTH, HEIGHT = 900, 640
 FPS = 60
 
-BG_COLOR = (12, 14, 22)
+BG_COLOR = (12, 14, 20)
 PANEL_COLOR = (22, 26, 36)
 WHITE = (240, 244, 248)
 MUTED = (170, 178, 186)
