@@ -50,7 +50,7 @@ if not os.path.exists(AST_FOLDER):
     os.makedirs(AST_FOLDER, exist_ok=True)
 
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Memory Match — Ultra")
+pygame.display.set_caption("Memory Match")
 clock = pygame.time.Clock()
 
 # =============================
@@ -493,7 +493,7 @@ def game_screen(level=1, mode="single"):
                 dkey = datetime.date.today().isoformat()
                 best = _daily_scores.get(dkey, {}).get("best_time")
                 label_mode = f"daily {dkey}"
-            draw_hud_single(level, moves, elapsed, best, powerups=pu_hud, mode=label_mode, extra="Click power-ups on right")
+            draw_hud_single(level, moves, elapsed, best, powerups=pu_hud, mode=label_mode, extra="Click power-ups on right" "       "  "Esc-Home")
 
         # Draw cards
         for c in cards:
@@ -731,7 +731,7 @@ def home_screen():
             if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1: click=True
 
         screen.fill(BG_COLOR)
-        draw_text_center("Memory Match — Ultra", FONT_XL, ACCENT, (WIDTH//2, 96))
+        draw_text_center("Memory Match", FONT_XL, ACCENT, (WIDTH//2, 96))
         draw_text_center("Now with Multiplayer, Daily, Training, Power-ups, XP & Collection", FONT_SM, MUTED, (WIDTH//2, 136))
 
         for (label, key), r in zip(labels, rects):
