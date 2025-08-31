@@ -493,7 +493,7 @@ def game_screen(level=1, mode="single"):
                 dkey = datetime.date.today().isoformat()
                 best = _daily_scores.get(dkey, {}).get("best_time")
                 label_mode = f"daily {dkey}"
-            draw_hud_single(level, moves, elapsed, best, powerups=pu_hud, mode=label_mode, extra="Click power-ups on right" "       "  "Esc-Home")
+            draw_hud_single(level, moves, elapsed, best, powerups=pu_hud, mode=label_mode, extra="Esc-Home"   "                  "  "Click power-ups on right")
 
         # Draw cards
         for c in cards:
@@ -717,7 +717,6 @@ def home_screen():
         ("Daily Challenge", "daily"),
         ("Training Mode", "training"),
         ("High Scores", "scores"),
-        ("Collection", "collection"),
         ("Settings", "settings"),
         ("Quit", "quit"),
     ]
@@ -731,6 +730,11 @@ def home_screen():
             if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1: click=True
 
         screen.fill(BG_COLOR)
+        # Add near your other images
+        LOGO_IMAGE = load_image(os.path.join(AST_FOLDER, "logo.png"))
+        LOGO_IMAGE = pygame.transform.smoothscale(LOGO_IMAGE, (130, 130))  # adjust size as needed
+        screen.blit(LOGO_IMAGE, (BOARD_PAD, BOARD_PAD))
+
         draw_text_center("Memory Match", FONT_XL, ACCENT, (WIDTH//2, 96))
         draw_text_center("Now with Multiplayer, Daily, Training, Power-ups, XP & Collection", FONT_SM, MUTED, (WIDTH//2, 136))
 
