@@ -4,7 +4,7 @@
   "streak": 0,
   "best_streak": 9,
   "powerups": {
-    "shuffle": 0,
+    "shuffle": 4,
     "bomb": 0,
     "freeze": 10
   },
