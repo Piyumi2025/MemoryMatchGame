@@ -1,9 +1,8 @@
-Here’s a well-structured **README.md** file for your GitHub project. I’ve included sections that explain the game, its features, setup instructions, and usage. You can copy it directly into your repo:
+# Memory Match — MindFlip 32 Levels
 
-````markdown
-# Memory Match — 32 Levels
+![Logo](assets/logo.png)
 
-A visually appealing **Memory Match Game** built with Python and Pygame. Test your memory skills across **32 challenging levels**, track your best times, and enjoy smooth animations and sound effects!
+A visually appealing **Memory Match Game** built with Python and Pygame. Test your memory skills across **32 challenging levels**, track your XP, unlock power-ups, and collect unique card faces!
 
 ---
 
@@ -12,22 +11,28 @@ A visually appealing **Memory Match Game** built with Python and Pygame. Test yo
 Memory Match is a classic card-matching game where the player flips over cards to find matching pairs. This version includes:
 
 - **32 Levels** of increasing difficulty
+- **Single Player & Multiplayer** modes
+- **Daily Challenges** with new puzzles each day
+- **Training Mode** to improve memory skills
+- **XP & Level System:** Gain experience and level up
+- **Power-ups:** Shuffle, Bomb, Freeze to enhance gameplay
+- **Collection:** Unlock and collect unique face images
 - **Time & Moves Tracking**
-- **High Score Saving** for each level
+- **High Score Saving** for each mode
 - Smooth **animations & sound effects**
 - Background music and interactive buttons
 - Responsive card layout that scales with the window
-- Logo and polished UI design
+- Polished UI with **logo and HUD**
 
 ---
 
 ## 🖼️ Assets
 
-The project uses three folders:
+The project uses three main folders:
 
 - `images/` — Card faces and back images (`1.png` to `32.png`, `back.png`)
 - `sounds/` — Sound effects (`flip.wav`, `match.wav`, `mismatch.wav`, `win.wav`, `button.wav`)
-- `assets/` — Font (`font.ttf`), background music (`bg_music.mp3`), logo (`logo.png`), and `high_scores.json` for storing scores
+- `assets/` — Font (`font.ttf`), background music (`bg_music.mp3`), logo (`logo.png`), and JSON files (`high_scores.json`, `profile.json`, `daily_scores.json`)
 
 > Note: If any asset is missing, the game provides placeholders.
 
@@ -42,7 +47,7 @@ Install Pygame using:
 
 ```bash
 pip install pygame
-````
+```
 
 ---
 
@@ -94,7 +99,9 @@ memory-match-32-levels/
 │   ├─ font.ttf
 │   ├─ bg_music.mp3
 │   ├─ logo.png
-│   └─ high_scores.json
+│   ├─ high_scores.json
+│   ├─ profile.json
+│   └─ daily_scores.json
 │
 ├─ main.py
 └─ README.md
@@ -105,7 +112,13 @@ memory-match-32-levels/
 ## 🎨 Features & Screenshots
 
 * **Dynamic Card Layout:** Cards scale to fit the window based on the number of pairs
-* **High Scores Tracking:** Save best times per level
+* **Multiplayer Mode:** Compete with friends on the same device
+* **Daily Challenge:** New puzzles each day with separate scoring
+* **Training Mode:** Practice without affecting scores
+* **XP & Level System:** Gain experience and track streaks
+* **Power-ups:** Shuffle, Bomb, Freeze with limited usage
+* **Collection:** Unlock and view unique face images
+* **High Scores Tracking:** Save best times per level and mode
 * **Interactive Buttons:** Hover effects and sounds
 * **Animated Flip & Match:** Visual feedback for matches and mismatches
 * **Background Music & Sound Effects:** Enhance gameplay experience
@@ -115,7 +128,7 @@ memory-match-32-levels/
 ## 🔧 Notes
 
 * If a card image or sound is missing, the game will generate a placeholder and continue running.
-* High scores are automatically saved in `assets/high_scores.json`.
+* High scores, profiles, and daily scores are automatically saved in the `assets/` folder.
 * The game plays background music in a loop. Volume can be adjusted in `main.py`.
 
 ---
@@ -126,11 +139,11 @@ This project is open-source and free to use under the MIT License.
 
 ---
 
-Enjoy testing your memory and climbing all **32 levels**! 🧠💡
+## 📂 GitHub Repository
 
-```
+Source code, assets, and full instructions are available on GitHub:  
+[https://github.com/Piyumi2025/MemoryMatchGame](https://github.com/Piyumi2025/MemoryMatchGame)
 
-I can also make a **shorter, GitHub-friendly version with badges and demo GIF placeholders** if you want it to look more professional.  
+---
 
-Do you want me to create that enhanced version too?
-```
+Enjoy testing your memory, unlocking collections, and climbing all **32 levels**! 🧠💡
