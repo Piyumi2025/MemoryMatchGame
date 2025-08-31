@@ -1,8 +1,8 @@
 {
-  "xp": 553,
+  "xp": 1180,
   "level": 1,
   "streak": 0,
-  "best_streak": 6,
+  "best_streak": 9,
   "powerups": {
     "shuffle": 0,
     "bomb": 0,
@@ -32,7 +32,19 @@
     "31.png",
     "16.png",
     "3.png",
-    "10.png"
+    "10.png",
+    "7.png",
+    "12.png",
+    "32.png",
+    "1.png",
+    "28.png",
+    "21.png",
+    "30.png",
+    "27.png",
+    "20.png",
+    "18.png",
+    "25.png",
+    "17.png"
   ],
   "settings": {
     "music": true,
